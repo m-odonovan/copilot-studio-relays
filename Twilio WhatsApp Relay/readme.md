@@ -1,9 +1,17 @@
-# Azure Bot Service Relay
-This is a relay service, which relays incoming messages from an Azure Bot Service bot, and Copilot Studio bot/copilot/agent.
-The original code for this, comes from the following repository -> https://github.com/microsoft/CopilotStudioSamples/tree/master/RelayBotSample
+# Twilio WhatsApp Relay Service
+This is a relay service, which relays incoming messages from Twilio (WhatsApp user), and Copilot Studio bot/copilot/agent.
+The original code for this, comes from the following repository -> https://www.twilio.com/en-us/blog/add-whatsapp-channel-power-virtual-agents-bot-twilio
 I have modified that code slightly, as it didnt work as-is. Its 98% the same, but with some minor tweaks e.g. support for other Copilot Studio regions.
 
 # Some notes / learnings from the solution:
+
+###The Twilio API nuances, TwiML and order of messages
+https://www.twilio.com/docs/messaging/twiml
+
+- Order of messages to end user
+- Size of messages
+- Message templates and buttons
+- Consider an alternate approach
 
 ### launchSettings.json
 
