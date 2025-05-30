@@ -35,7 +35,7 @@ namespace WhatsAppRelay.BotConnectorApp
                httpRequest.Method = HttpMethod.Get;
                UriBuilder uriBuilder = new UriBuilder(TokenEndPoint);
                uriBuilder.Query = $"api-version=2022-03-01-preview&botId={BotId}&tenantId={TenantId}";
-               httpRequest.RequestUri = uriBuilder.Uri; //new Uri("https://c4259b43dd33e1d7a99c3805d2faca.57.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_cvQuestions/directline/token?api-version=2022-03-01-preview"); //uriBuilder.Uri;
+               httpRequest.RequestUri = uriBuilder.Uri; 
                using (var response = await s_httpClient.SendAsync(httpRequest))
                {
                    var responseString = await response.Content.ReadAsStringAsync();
