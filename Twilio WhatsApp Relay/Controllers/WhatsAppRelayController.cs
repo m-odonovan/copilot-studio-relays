@@ -16,8 +16,8 @@ public class WhatsAppRelayController : ControllerBase
    private static string? s_endConversationMessage;
    private static BotService? s_botService;
    public static IDictionary<string, string> s_tokens = new Dictionary<string, string>();
-    private const int WaitForBotResponseMaxMilSec = 13 * 1000; //twlio timeout is 15 seconds, so we wait for 13 seconds
-    private const int PollForBotResponseIntervalMilSec = 1500;
+    private const int WaitForBotResponseMaxMilSec = 14 * 1000; //twlio timeout is 15 seconds, so we wait for 13 seconds
+    private const int PollForBotResponseIntervalMilSec = 1000;
    
    public WhatsAppRelayController(IConfiguration configuration)
     {
@@ -82,7 +82,7 @@ public class WhatsAppRelayController : ControllerBase
    private async Task<string> StartConversation(string inputMsg, string from, string token = "")
    {
        Console.WriteLine("inputMsg: " + inputMsg);
-       Console.WriteLine("token: " + token);
+       //Console.WriteLine("token: " + token);
        using (var directLineClient = new DirectLineClient(token))
         {
 
@@ -127,7 +127,11 @@ public class WhatsAppRelayController : ControllerBase
 
    private static string BotReplyAsAPIResponse(List<Activity> responses)
    {
-       string responseStr = "";
+
+        //https://www.twilio.com/docs/messaging/twiml
+
+
+        string responseStr = "";
        responses?.ForEach(responseActivity =>
        {
            // responseActivity is standard Microsoft.Bot.Connector.DirectLine.Activity
@@ -200,7 +204,8 @@ Console.WriteLine(s_botService.BotName);
         {
               // Get bot response using directlineClient,
                 // response contains whole conversation history including user & bot's message
-                Console.WriteLine("Looking for response from Copilot Studio");
+            Console.WriteLine("Looking for response from Copilot Studio");
+            Console.WriteLine("Attempt number :" + retry);
             response = await directLineClient.Conversations.GetActivitiesAsync(conversationtId, _watermark);
 
             if (response != null)
@@ -223,6 +228,7 @@ Console.WriteLine(s_botService.BotName);
                 }
             }
 
+           
             Console.WriteLine("No bot response yet. Waiting for " + PollForBotResponseIntervalMilSec + " milliseconds.");
             Thread.Sleep(PollForBotResponseIntervalMilSec);
         }
