@@ -4,6 +4,14 @@ using WhatsAppRelay.BotConnectorApp;
 using Twilio;
 using Twilio.Rest.Api.V2010.Account;
 using Twilio.Types;
+using Twilio.Security;
+
+//todo: add security to this web app so that the called must supply a valid token / key or they cannot call it. The caller being Twilio.
+//using System.Collections.Generic;
+//using System.Linq;  
+//using System.Threading.Tasks;
+//using Microsoft.Extensions.Configuration;
+
 
 
 namespace WhatsAppRelay.Controllers;
@@ -17,9 +25,10 @@ public class WhatsAppRelayController : ControllerBase
     private const int _botReplyWaitIntervalInMilSec = 3000;
     private static BotService? s_botService;
     public static IDictionary<string, string> s_tokens = new Dictionary<string, string>();
-    private const int WaitForBotResponseMaxMilSec = 14 * 1000; //twlio timeout is 15 seconds, so we wait for 13 seconds
-    private const int PollForBotResponseIntervalMilSec = 1000;
+    private const int WaitForBotResponseMaxMilSec = 30 * 1000; 
+    private const int PollForBotResponseIntervalMilSec = 1500;
 
+    private static string authToken = string.Empty;
     private static string fromNumber = string.Empty;
 
     public WhatsAppRelayController(IConfiguration configuration)
@@ -29,7 +38,7 @@ public class WhatsAppRelayController : ControllerBase
         //Twilio account details
         // These values should be set in your appsettings.json or environment variables
         var accountSid = _configuration.GetValue<string>("Twilio:AccountSid") ?? string.Empty;
-        var authToken = _configuration.GetValue<string>("Twilio:AuthToken") ?? string.Empty;
+        authToken = _configuration.GetValue<string>("Twilio:AuthToken") ?? string.Empty;
         fromNumber = _configuration.GetValue<string>("Twilio:FromNumber") ?? string.Empty;
 
         var botId = _configuration.GetValue<string>("BotId") ?? string.Empty;
@@ -44,6 +53,8 @@ public class WhatsAppRelayController : ControllerBase
             Environment.Exit(0);
         }
 
+
+
         s_botService = new BotService()
         {
             BotName = botName,
@@ -53,6 +64,7 @@ public class WhatsAppRelayController : ControllerBase
         };
 
         TwilioClient.Init(accountSid, authToken);
+
     }
 
     [HttpPost]
@@ -61,6 +73,13 @@ public class WhatsAppRelayController : ControllerBase
     //public async Task<ActionResult> StartBot(HttpContext req)
     public async Task<ActionResult> StartBot([FromForm] string From, [FromForm] string Body)
     {
+
+    // Validate the security header from Twilio
+    string errorMessage;
+    if (!IsTwilioRequestValid(authToken, out errorMessage))
+    {
+        return Unauthorized(errorMessage);
+    }
 
 
         Console.WriteLine("From: " + From);
@@ -93,6 +112,42 @@ public class WhatsAppRelayController : ControllerBase
         return immediateResponse;
 
     }
+
+    private bool IsTwilioRequestValid(string authToken, out string errorMessage)
+{
+    errorMessage = string.Empty;
+
+    var validator = new RequestValidator(authToken);
+
+    // Get the Twilio signature from the header
+    var twilioSignature = Request.Headers["X-Twilio-Signature"].ToString();
+    if (string.IsNullOrEmpty(twilioSignature))
+    {
+        errorMessage = "Missing security header";
+        return false;
+    }
+
+        // Construct the full URL of the request, this will not work if using Dev Tunnel, so you need to set the requestUrl manually
+        // If you are using a Dev Tunnel, you can set the requestUrl manually to the tunnel URL
+    //e.g. https://29vd6jr7.euw.devtunnels.ms:7016/WhatsAppRelay/StartBot
+    var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}";
+        //var requestUrl = "https://29vd6jr7.euw.devtunnels.ms:7016/WhatsAppRelay/StartBot";
+
+    // Read the form data synchronously (since this is called from an async context, you may want to refactor to async if needed)
+    var form = Request.ReadFormAsync().GetAwaiter().GetResult();
+    var formParams = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
+
+    // Validate the request
+    var isValid = validator.Validate(requestUrl, formParams, twilioSignature);
+
+    if (!isValid)
+    {
+        errorMessage = "Invalid security header";
+        return false;
+    }
+
+    return true;
+}
 
     //private static async Task<string> StartConversation(string inputMsg)
     private async Task StartConversation(string inputMsg, string from, string token = "")
@@ -205,7 +260,7 @@ public class WhatsAppRelayController : ControllerBase
     private static async Task SendWhatsAppTextMessageViaTwilio(string to, string message)
     {
 
-        var toNumber = $"whatsapp:{to}";
+        //var toNumber = $"whatsapp:{to}";
 
         try
         {
@@ -214,7 +269,7 @@ public class WhatsAppRelayController : ControllerBase
             var sendMessage = await MessageResource.CreateAsync(
             body: message,
             from: new PhoneNumber($"whatsapp:{fromNumber}"), // Your Twilio number
-            to: new PhoneNumber(toNumber)    // Recipient's number
+            to: new PhoneNumber(to)    // Recipient's number
                    );
 
             Console.WriteLine($"Message SID: {sendMessage.Sid}");
