@@ -1,17 +1,25 @@
 # Twilio WhatsApp Relay Service
-This is a relay service, which relays incoming messages from Twilio (WhatsApp user), and Copilot Studio bot/copilot/agent.
+This is a relay service, which relays incoming messages from Twilio (WhatsApp user), and a Copilot Studio agent. It is designed to be hosted as an Azure Web App Service.
 The original code for this, comes from the following repository -> https://www.twilio.com/en-us/blog/add-whatsapp-channel-power-virtual-agents-bot-twilio
-I have modified that code slightly, as it didnt work as-is. Its 98% the same, but with some minor tweaks e.g. support for other Copilot Studio regions.
+I have modified that code slightly, as it didnt work well as documented. Some example of changes: 
+
+1. When Twilio sends an HTTP messages to the relay, it expects an HTTP response with 20 seconds, otherwise it fails. Therefore, I changed the code so that a response is instant, and then asyncronously call Copilot Studio agent, and based on this response, call Twilio as a seperate HTTP call. So, if the Copilot Studio response takes a long time, it still works.
+2. Use the Twilio SDK to call Twilio HTTP endpoint.
+3. Added security, so that the relay service only accepts connections from Twilio
 
 # Some notes / learnings from the solution:
 
 ###The Twilio API nuances, TwiML and order of messages
 https://www.twilio.com/docs/messaging/twiml
 
-- Order of messages to end user
-- Size of messages
-- Message templates and buttons
-- Consider an alternate approach
+- Order of messages to end user -> if you send 2 messages e.g. agent sends 2 messages one after each other, its possible that the second arrives before the first (out of sequence). This is becuase of message sizes and internet delivery. To work around this you could either have a pause between sending messages, or in your topic try and group messages together, instead of one after each other. You need to be a bit clever here.
+- Size of messages -> there is a max message size of 1600 characters, so if the response of a message is larger than this, you need to split it into two messages. This sample does do this, but it could be smarter.
+- Message templates and buttons -> this sample doesnt use message templates, but it could if needed. Future enhancement.
+
+### Future - change the code which calls Direct Line to use the "new" M365 Copilot SDK
+
+At the time of coding this this new SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet.
+Particularly interesting is how it appears you dont need to poll to see for return messages from Direct Line, but rather its a websocket which receives messages as they arrive. You will notice in this sample it has a setting of how max times it should check for messages, and the interval between the polling in MS.
 
 ### launchSettings.json
 
