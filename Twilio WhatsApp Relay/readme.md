@@ -3,7 +3,7 @@ This is a relay service, which relays incoming messages from Twilio (WhatsApp us
 The original code for this, comes from the following repository -> https://www.twilio.com/en-us/blog/add-whatsapp-channel-power-virtual-agents-bot-twilio
 I have modified that code slightly, as it didnt work well as documented. Some example of changes: 
 
-1. When Twilio sends an HTTP messages to the relay, it expects an HTTP response with 20 seconds, otherwise it fails. Therefore, I changed the code so that a response is instant, and then asyncronously call Copilot Studio agent, and based on this response, call Twilio as a seperate HTTP call. So, if the Copilot Studio response takes a long time, it still works.
+1. When Twilio sends an HTTP messages to the relay, it expects an HTTP response with 15 seconds, otherwise it fails. Therefore, I changed the code so that a response is instant, and then asyncronously call Copilot Studio agent, and based on this response, call Twilio as a seperate HTTP call. So, if the Copilot Studio response takes a long time, it still works.
 2. Use the Twilio SDK to call Twilio HTTP endpoint.
 3. Added security, so that the relay service only accepts connections from Twilio
 
@@ -20,6 +20,8 @@ https://www.twilio.com/docs/messaging/twiml
 
 At the time of coding this this new SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet.
 Particularly interesting is how it appears you dont need to poll to see for return messages from Direct Line, but rather its a websocket which receives messages as they arrive. You will notice in this sample it has a setting of how max times it should check for messages, and the interval between the polling in MS.
+
+TODO: the code is currently forcing a region of directline to be Europe. I must change this to be more like the Azure Bot Service relay example, and make this a setting for the region. If you region is not Europe for your Copilot Studio agent, then you must for now just edit the code. Its commented for clarity.
 
 ### launchSettings.json
 
@@ -40,36 +42,19 @@ I used VS Code, added the Azure App Service Extension, and then chose to publish
 
 There are several settings which the application uses, which are set in the appsettings.json / appsettings.development.json / appsettings.production.json. When hosted in Azure App service, you can still use these files, but better practise to set them in the environment settings part of the Azure App service.
 
-When you do add settings in Azure App Service, and they are nested settings, you use __ between parent and child
+Here is list of settings, as they would appear in the appsettings file:
 
-Here is list of settings, as they would appear in Azure App Service:
+- "BotId" - Copilot Studio bot id (get from URL of bot in designer)
+- "BotTenantId" - get from Copilot Studio settings for agent/bot
+- "BotName":" friendly name of Copilot Studio agent / bot
+- "BotTokenEndPoint": directline endpoint e.g "https://example.5b.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_example/directline/token?api-version=2022-03-01-preview"
+- "Twilio:AccountSid": This comes from Twilio service
+- "Twilio:AuthToken": This comes from Twilio service
+- "Twilio:FromNumber": This is the Twilio telephone number, in the form of "+1....."
 
-- CopilotStudio__BotName - friendly name of Copilot Studio agent / bot
-- CopilotStudio__BotId - Copilot Studio bot id (get from URL of bot in designer)
-- CopilotStudio__BotLocation - leave empty if US, otherwise set to "europe", or "india". This is for the DirectLine URL
-- CopilotStudio__TenantId - get from Copilot Studio settings for agent/bot
+Local Development Debugging
+You can use NGROK or Azure Dev Tunnel to point the Messaging EndPoint in Twilio to your localhost dev server, and use debugging, breakpoints etc. In Twilio you would configure the endpoint to be the hostname and port Dev Tunnel gives you. Do note, if you do this, you will need to comment out the security validation section where the code only accepts connections from Twilio, as this will not work in this context.
 
-These are Azure App Service settings using by Bot Framework SDK: https://learn.microsoft.com/en-us/azure/bot-service/bot-builder-authentication?view=azure-bot-service-4.0&tabs=userassigned%2Caadv2%2Ccsharp
-
-- MicrosoftAppType - not required for local dev. I wanted the app to use a user-assigned managed identity, so set this to UserAssignedMSI
-- MicrosoftAppId - not required for local dev. This is the client ID of the managed identity in my scenario
-- MicrosoftAppPassword - not required for local dev. Not applicable if using managed identiy
-- MicrosoftAppTenantId - not required for local dev. This is the tenant id of where app is running, get from Entra ID properties page
-
-### Configuring Azure Bot Service to use this App Service
-
-You create an Azure Bot service and then need to set some properties so it uses the app service created above:
-
-- Messaging EndPoint - this is the path to the app service e.g. https://appservicename.azurewebsites.net/api/messages
-- Bot Type - in my case set to user assigne managed identity
-- Microsoft App ID - in my case set to the id (clientid) of the user assigned managed identity of the app service
-- App Tenant ID - This is the tenant id of where app is running, get from Entra ID properties page
-
-Idea - you could use NGROK or Azure Dev Tunnel to point the Messaging EndPoint to your local dev server, and use debugging, breakpoints etc,
-
-### Deployment files folder
-
-These are deployment templates for the Azure App Service and the Azure Bot Service. These can be used if you want to provision these services using ARM templates and command line. These are originally from - https://github.com/microsoft/CopilotStudioSamples/tree/master/RelayBotSample/DeploymentTemplates
 
 ### Enable logging in web app
 
