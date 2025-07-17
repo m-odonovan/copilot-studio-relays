@@ -3,13 +3,13 @@ This is a relay service, which relays incoming messages from Twilio (WhatsApp us
 The original code for this, comes from the following repository -> https://www.twilio.com/en-us/blog/add-whatsapp-channel-power-virtual-agents-bot-twilio
 I have modified that code slightly, as it didnt work well as documented. Some example of changes: 
 
-1. When Twilio sends an HTTP messages to the relay, it expects an HTTP response with 15 seconds, otherwise it fails. Therefore, I changed the code so that a response is instant, and then asyncronously call Copilot Studio agent, and based on this response, call Twilio as a seperate HTTP call. So, if the Copilot Studio response takes a long time, it still works.
+1. When Twilio sends an HTTP messages to the relay, it expects an HTTP response within 15 seconds, otherwise it fails. Therefore, I changed the code so that a response is instantly returned to the calling service i.e. Twilio, and then asyncronously, the code calls the Copilot Studio agent, and based on this response, calls Twilio as a seperate, out of band, HTTP call. So, if the Copilot Studio response takes a long time, it still works.
 2. Use the Twilio SDK to call Twilio HTTP endpoint.
 3. Added security, so that the relay service only accepts connections from Twilio
 
 # Some notes / learnings from the solution:
 
-###The Twilio API nuances, TwiML and order of messages
+### The Twilio API nuances, TwiML and order of messages
 https://www.twilio.com/docs/messaging/twiml
 
 - Order of messages to end user -> if you send 2 messages e.g. agent sends 2 messages one after each other, its possible that the second arrives before the first (out of sequence). This is becuase of message sizes and internet delivery. To work around this you could either have a pause between sending messages, or in your topic try and group messages together, instead of one after each other. You need to be a bit clever here.
