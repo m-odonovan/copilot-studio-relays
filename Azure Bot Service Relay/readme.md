@@ -1,7 +1,7 @@
 # Azure Bot Service Relay
 This is a relay service, which relays incoming messages from an Azure Bot Service bot, and Copilot Studio bot/copilot/agent.
 The original code for this, comes from the following repository -> https://github.com/microsoft/CopilotStudioSamples/tree/master/RelayBotSample
-I have modified that code slightly, as it didnt work as-is. Its 98% the same, but with some minor tweaks e.g. support for other Copilot Studio regions.
+I have modified that code slightly, as it didnt work as-is. Its 98% the same, but with some minor tweaks e.g. support for other Copilot Studio regions. This relay is designed to be deployed as an Azure Web App service.
 
 # Some notes / learnings from the solution:
 
@@ -58,3 +58,8 @@ These are deployment templates for the Azure App Service and the Azure Bot Servi
 ### Enable logging in web app
 
 If you edit web.config in app service, you can set stdoutLogEnabled="true", this will send all output in the app service e.g. console.writeline and log output to these log files
+
+### Future - change the code which calls Direct Line to use the "new" M365 Copilot SDK
+
+At the time of coding this this new SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet.
+Particularly interesting is how it appears you dont need to poll to see for return messages from Direct Line, but rather its a websocket which receives messages as they arrive.
