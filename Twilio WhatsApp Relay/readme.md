@@ -31,6 +31,10 @@ This is for local development, it defines how the local web server will be launc
 
 To run locally you can either start from VS Code / Visual Studio, and use break points to debug, or you can build via command line and run e..g "dotnet build" will just compile the solution, or "dotnet watch run" will compile and run, but also dynamicaly recompile if you change code.
 
+It should launch the swagger file directly, so you can test using swagger web form, like shown below.
+
+![Swagger](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/swagger.png?raw=true "Swagger")
+
 ### Publish to Azure App Service
 
  - First you should compile the service for release and not debug i.e. command line is "dotnet build -c release". This will compile what is need in app service to bin/ver/release/
