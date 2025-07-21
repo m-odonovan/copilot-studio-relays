@@ -44,7 +44,7 @@ I used VS Code, added the Azure App Service Extension, and then chose to publish
 
 ### Twilio Config
 
-Set path to endpoint in Tiwlio configuration, pointing to the service end point and path, something like the below.
+In Twilio dashboard, you need to tell Twlio to forward requests to your web app i.e. something like the below. This could also be to your localhost deployment, but there is when you would need a devtunnel, and you would change the hostname to the devtunnel host name.
 
 ![Twilio Config](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/TwilioConfig.png?raw=true "Twilio Config")
 
