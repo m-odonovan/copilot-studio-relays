@@ -27,6 +27,12 @@ TODO: the code is currently forcing a region of directline to be Europe. I must 
 
 This is for local development, it defines how the local web server will be launched, the security settings for it, the ports used and the mode of the application e.g. Development. This mode is used by other settings configuration to determien which app settings to use. i.e. appsettings.json is always used, but it will also use appsettings.Development.json, if the development mode in launchSettings is set to Development.
 
+### Twilio Config
+
+Set path to endpoint in Tiwlio configuration, pointing to the service end point and path, something like the below.
+
+![Twilio Config](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/TwilioConfig.png?raw=true "Twilio Config")
+
 ### Local Development
 
 To run locally you can either start from VS Code / Visual Studio, and use break points to debug, or you can build via command line and run e..g "dotnet build" will just compile the solution, or "dotnet watch run" will compile and run, but also dynamicaly recompile if you change code.
