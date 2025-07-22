@@ -22,28 +22,36 @@ namespace WhatsAppRelay.BotConnectorApp
        public string? TenantId { get; set; }
 
        public string? TokenEndPoint { get; set; }
+       
+       public string BotLocation { get; set; } = string.Empty;
 
-       /// <summary>
-       /// Get directline token for connecting bot
-       /// </summary>
-       /// <returns>directline token as string</returns>
-       public async Task<string> GetTokenAsync()
-       {
-           string token;
-           using (var httpRequest = new HttpRequestMessage())
-           {
-               httpRequest.Method = HttpMethod.Get;
-               UriBuilder uriBuilder = new UriBuilder(TokenEndPoint);
-               uriBuilder.Query = $"api-version=2022-03-01-preview&botId={BotId}&tenantId={TenantId}";
-               httpRequest.RequestUri = uriBuilder.Uri; 
-               using (var response = await s_httpClient.SendAsync(httpRequest))
-               {
-                   var responseString = await response.Content.ReadAsStringAsync();
-                   token = SafeJsonConvert.DeserializeObject<DirectLineToken>(responseString).Token;
-               }
-           }
 
-           return token;
-       }
+   public string GetBotBaseUri()
+        {
+            return string.IsNullOrEmpty(BotLocation) ? "https://directline.botframework.com" : $"https://{BotLocation.ToLower()}.directline.botframework.com";
+        }
+        /// <summary>
+        /// Get directline token for connecting bot
+        /// </summary>
+        /// <returns>directline token as string</returns>
+        public async Task<string> GetTokenAsync()
+        {
+            string token;
+            using (var httpRequest = new HttpRequestMessage())
+            {
+                httpRequest.Method = HttpMethod.Get;
+                UriBuilder uriBuilder = new UriBuilder(TokenEndPoint);
+
+                uriBuilder.Query = $"api-version=2022-03-01-preview&botId={BotId}&tenantId={TenantId}";
+                httpRequest.RequestUri = uriBuilder.Uri;
+                using (var response = await s_httpClient.SendAsync(httpRequest))
+                {
+                    var responseString = await response.Content.ReadAsStringAsync();
+                    token = SafeJsonConvert.DeserializeObject<DirectLineToken>(responseString).Token;
+                }
+            }
+
+            return token;
+        }
    }
 }
