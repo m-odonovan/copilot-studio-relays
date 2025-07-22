@@ -19,8 +19,6 @@ I have modified that code slightly, as it didn't work well for several scenario.
 At the time of coding this this, the new M365 Copilot SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet.
 Particularly interesting is how it appears you don't need to poll to check for messages from Direct Line, but rather it uses a websocket which receives messages as they arrive. You will notice in my sample it polls for messages from Direct Line, and uses a variable for how how max times it should check for messages, and the interval between the polling in, in milliseconds.
 
-TODO: the code is currently forcing a region of directline to be Europe. I must change this to be more like the Azure Bot Service relay example, and make this a setting for the region. If you region is not Europe for your Copilot Studio agent, then you must for now just edit the code. Its commented for clarity.
-
 ### launchSettings.json
 
 This is for local development, it defines how the local web server will be launched, the security settings for it, the ports used and the mode of the application e.g. Development. This mode is used by other settings configuration to determien which app settings to use. i.e. appsettings.json is always used, but it will also use appsettings.Development.json, if the development mode in launchSettings is set to Development.
