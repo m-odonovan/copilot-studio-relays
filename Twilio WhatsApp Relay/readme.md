@@ -33,6 +33,8 @@ When launched in development mode, it should launch the swagger test page, so yo
 
 ![Swagger](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/swagger.png?raw=true "Swagger")
 
+Note format of from paramter value, using whatsapp keyword in before the telephone number
+
 ### Publish to Azure App Service
 
  - First you should compile the service for release and not debug i.e. command line is "dotnet build -c release". This will compile what is need in app service to bin/ver/release/
@@ -57,11 +59,12 @@ Here is list of settings, as they would appear in the appsettings file:
 
 - "BotId" - Copilot Studio bot id (get from URL of bot in designer)
 - "BotTenantId" - get from Copilot Studio settings for agent/bot
-- "BotName":" friendly name of Copilot Studio agent / bot
-- "BotTokenEndPoint": directline endpoint e.g "https://example.5b.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_example/directline/token?api-version=2022-03-01-preview"
-- "Twilio:AccountSid": This comes from Twilio service
-- "Twilio:AuthToken": This comes from Twilio service
-- "Twilio:FromNumber": This is the Twilio telephone number, in the form of "+1....."
+- "BotName" - friendly name of Copilot Studio agent / bot
+- "BotLocation" - leave empty if US, otherwise set to "europe", or "india". This is for the DirectLine URL
+- "BotTokenEndPoint" - directline endpoint e.g "https://example.5b.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_example/directline/token?api-version=2022-03-01-preview"
+- "Twilio:AccountSid"- This comes from Twilio service
+- "Twilio:AuthToken" - This comes from Twilio service
+- "Twilio:FromNumber" - This is the Twilio telephone number, in the form of "+1....."
 
 
 ### Enable logging in web app
