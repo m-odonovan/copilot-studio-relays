@@ -4,7 +4,7 @@ The original code for this, comes from the following repository -> https://www.t
 I have modified that code slightly, as it didn't work well for several scenario. Here are some example of changes which were made: 
 
 1. When Twilio sends an HTTP messages to the relay, it expects a response to its call within 15 seconds, otherwise it fails. A Copilot Studio agent response can sometimes take longer than this. Therefore, I changed the code so that the relay responds instantly and asyncronously calls the Copilot Studio agent (using Direct Line API). When a response is received from the agent, the relay posts the response message to Twilio, using the Twilio SDK.
-2. Added security, so that the relay service only accepts connections from Twilio. Important: this only checks Twilio is sender if development mode for the solution is not "Development". This is so that it works when testing the solution locally, be sure to change mode to "Production" when deployed into your hosting service i.e. Azure App Service.
+2. Added security, so that the relay service only accepts connections from Twilio. Important: this only checks Twilio is the sender, if development mode for the solution is not "Development". This is so that the solution works when testing locally, be sure to change mode to "Production" when deployed into your hosting service i.e. Azure App Service.
 
 # Some notes / learnings from the solution:
 
@@ -21,7 +21,7 @@ Particularly interesting is how it appears you don't need to poll to check for m
 
 ### launchSettings.json
 
-This is for local development, it defines how the local web server will be launched, the security settings for it, the ports used and the mode of the application e.g. Development. This mode is used by other settings configuration to determien which app settings to use. i.e. appsettings.json is always used, but it will also use appsettings.Development.json, if the development mode in launchSettings is set to Development.
+This is for local development, it defines how the local web server will be launched, the security settings for it, the ports used and the mode of the application e.g. Development. This mode is used by other settings configuration to determien which app settings to use. i.e. appsettings.json is always used, but it will also use appsettings.Development.json, if the development mode in launchSettings is set to Development. When hosted in your Azure App Service, ensure you have an environment variable called "ASPNETCORE_ENVIRONMENT" set to "Production", so code in the solution runs as production and not development.
 
 ### Local Development
 
