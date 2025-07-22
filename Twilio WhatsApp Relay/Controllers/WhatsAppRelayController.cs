@@ -25,7 +25,7 @@ public class WhatsAppRelayController : ControllerBase
     private const int _botReplyWaitIntervalInMilSec = 3000;
     private static BotService? s_botService;
     public static IDictionary<string, string> s_tokens = new Dictionary<string, string>();
-    private const int WaitForBotResponseMaxMilSec = 30 * 1000; 
+    private const int WaitForBotResponseMaxMilSec = 30 * 1000;
     private const int PollForBotResponseIntervalMilSec = 1500;
 
     private static string authToken = string.Empty;
@@ -45,6 +45,7 @@ public class WhatsAppRelayController : ControllerBase
         var tenantId = _configuration.GetValue<string>("BotTenantId") ?? string.Empty;
         var botTokenEndpoint = _configuration.GetValue<string>("BotTokenEndpoint") ?? string.Empty;
         var botName = _configuration.GetValue<string>("BotName") ?? string.Empty;
+        var botLocation = _configuration.GetValue<string>("BotLocation") ?? string.Empty;
 
         if (string.IsNullOrEmpty(accountSid) || string.IsNullOrEmpty(authToken) || string.IsNullOrEmpty(fromNumber) || string.IsNullOrEmpty(botId) || string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(botTokenEndpoint) || string.IsNullOrEmpty(botName))
         {
@@ -61,6 +62,8 @@ public class WhatsAppRelayController : ControllerBase
             BotId = botId,
             TenantId = tenantId,
             TokenEndPoint = botTokenEndpoint,
+            BotLocation = botLocation
+
         };
 
         TwilioClient.Init(accountSid, authToken);
@@ -74,13 +77,20 @@ public class WhatsAppRelayController : ControllerBase
     public async Task<ActionResult> StartBot([FromForm] string From, [FromForm] string Body)
     {
 
-    // Validate the security header from Twilio
-    string errorMessage;
-    if (!IsTwilioRequestValid(authToken, out errorMessage))
-    {
-        return Unauthorized(errorMessage);
-    }
+        // Validate the security header from Twilio
+        string errorMessage;
 
+        // If you are in development mode, you can skip the validation
+        // 
+        var env = HttpContext.RequestServices.GetService(typeof(IWebHostEnvironment)) as IWebHostEnvironment;
+        if (env == null || !env.IsDevelopment())
+        {
+            //does the request come from Twilio, if not reject it with access denied 401
+            if (!IsTwilioRequestValid(authToken, out errorMessage))
+            {
+                return Unauthorized(errorMessage);
+            }
+        }
 
         Console.WriteLine("From: " + From);
         Console.WriteLine("Body: " + Body);
@@ -114,40 +124,40 @@ public class WhatsAppRelayController : ControllerBase
     }
 
     private bool IsTwilioRequestValid(string authToken, out string errorMessage)
-{
-    errorMessage = string.Empty;
-
-    var validator = new RequestValidator(authToken);
-
-    // Get the Twilio signature from the header
-    var twilioSignature = Request.Headers["X-Twilio-Signature"].ToString();
-    if (string.IsNullOrEmpty(twilioSignature))
     {
-        errorMessage = "Missing security header";
-        return false;
-    }
+        errorMessage = string.Empty;
+
+        var validator = new RequestValidator(authToken);
+
+        // Get the Twilio signature from the header
+        var twilioSignature = Request.Headers["X-Twilio-Signature"].ToString();
+        if (string.IsNullOrEmpty(twilioSignature))
+        {
+            errorMessage = "Missing security header";
+            return false;
+        }
 
         // Construct the full URL of the request, this will not work if using Dev Tunnel, so you need to set the requestUrl manually
         // If you are using a Dev Tunnel, you can set the requestUrl manually to the tunnel URL
-    //e.g. https://29vd6jr7.euw.devtunnels.ms:7016/WhatsAppRelay/StartBot
-    var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}";
-        //var requestUrl = "https://29vd6jr7.euw.devtunnels.ms:7016/WhatsAppRelay/StartBot";
+        //e.g. https://29vd6jr7.euw.devtunnels.ms:7016/WhatsAppRelay/StartBot
+        var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}";
+    
 
-    // Read the form data synchronously (since this is called from an async context, you may want to refactor to async if needed)
-    var form = Request.ReadFormAsync().GetAwaiter().GetResult();
-    var formParams = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
+        // Read the form data synchronously (since this is called from an async context, you may want to refactor to async if needed)
+        var form = Request.ReadFormAsync().GetAwaiter().GetResult();
+        var formParams = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
 
-    // Validate the request
-    var isValid = validator.Validate(requestUrl, formParams, twilioSignature);
+        // Validate the request
+        var isValid = validator.Validate(requestUrl, formParams, twilioSignature);
 
-    if (!isValid)
-    {
-        errorMessage = "Invalid security header";
-        return false;
+        if (!isValid)
+        {
+            errorMessage = "Invalid security header";
+            return false;
+        }
+
+        return true;
     }
-
-    return true;
-}
 
     //private static async Task<string> StartConversation(string inputMsg)
     private async Task StartConversation(string inputMsg, string from, string token = "")
@@ -157,9 +167,9 @@ public class WhatsAppRelayController : ControllerBase
         using (var directLineClient = new DirectLineClient(token))
         {
 
-            //TODO: update to dynamic get locatoin, if agent in Europe you need this
-            directLineClient.BaseUri = new Uri("https://europe.directline.botframework.com");
-            //directLineClient.Domain = "https://europe.directline.botframework.com/v3/directline";
+            //get uri to directline
+            directLineClient.BaseUri = new Uri(s_botService.GetBotBaseUri());
+        
             var conversation = await directLineClient.Conversations.StartConversationAsync();
             var conversationtId = conversation.ConversationId;
             //string inputMessage;
@@ -275,7 +285,8 @@ public class WhatsAppRelayController : ControllerBase
             Console.WriteLine($"Message SID: {sendMessage.Sid}");
 
         }
-        catch (Twilio.Exceptions.ApiException ex)       {
+        catch (Twilio.Exceptions.ApiException ex)
+        {
 
 
             Console.WriteLine($"Twilio API Error: {ex.Message}");
@@ -286,16 +297,16 @@ public class WhatsAppRelayController : ControllerBase
 
     }
 
-   /// <summary>
-   /// Send WhatsApp template message via Twilio
-   /// This method uses Twilio's API to send a WhatsApp message with a template.
-   /// Not yet implemented, plan to add support in the future
-   /// </summary>
-   /// <param name="to"></param>
-   /// <param name="message"></param>
-   /// <param name="templateID"></param>
-   /// <returns></returns>
-    private static async Task SendWhatsAppTemplateMessageViaTwilio(string to, string message,string templateID)
+    /// <summary>
+    /// Send WhatsApp template message via Twilio
+    /// This method uses Twilio's API to send a WhatsApp message with a template.
+    /// Not yet implemented, plan to add support in the future
+    /// </summary>
+    /// <param name="to"></param>
+    /// <param name="message"></param>
+    /// <param name="templateID"></param>
+    /// <returns></returns>
+    private static async Task SendWhatsAppTemplateMessageViaTwilio(string to, string message, string templateID)
     {
 
         var toNumber = $"whatsapp:{to}";
@@ -320,7 +331,8 @@ public class WhatsAppRelayController : ControllerBase
             Console.WriteLine($"Message SID: {sendMessage.Sid}");
 
         }
-        catch (Twilio.Exceptions.ApiException ex)       {
+        catch (Twilio.Exceptions.ApiException ex)
+        {
 
 
             Console.WriteLine($"Twilio API Error: {ex.Message}");
