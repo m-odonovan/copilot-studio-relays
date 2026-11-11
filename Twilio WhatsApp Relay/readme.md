@@ -16,7 +16,7 @@ I have modified that code slightly, as it didn't work well for several scenario.
 
 ### Future - change the code which calls Direct Line to use the "new" M365 Agent SDK
 
-At the time of coding this this, the new M365 Agent SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet.
+At the time of coding this this, the new M365 Agent SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> [https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet](https://github.com/microsoft/Agents/tree/main/samples/dotnet/copilotstudio-client).
 Particularly interesting is how it appears you don't need to poll to check for messages from Direct Line, but rather it uses a websocket which receives messages as they arrive. You will notice in my sample it polls for messages from Direct Line, and uses a variable for how how max times it should check for messages, and the interval between the polling in, in milliseconds.
 
 ### launchSettings.json
