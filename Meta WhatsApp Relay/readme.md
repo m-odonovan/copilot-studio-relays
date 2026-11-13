@@ -3,7 +3,12 @@ This is a relay service, which relays incoming messages between Meta (WhatsApp u
 
 This is not ready yet, still working on it. It needs work around queuing and debugging.
 
+WhatsApp Relay sample
+https://github.com/microsoft/CopilotStudioSamples/tree/adilei-whatsapp-upstream-pr/extensibility/agents-sdk/whatsapp-relay
 
+https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started#step-3-send-and-receive-messages
+
+[text](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview)
 
 # Some notes / learnings from the solution:
 
