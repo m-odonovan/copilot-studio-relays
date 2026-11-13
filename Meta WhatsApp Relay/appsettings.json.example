@@ -1,0 +1,20 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "BotId":"",
+  "BotTenantId":"",
+  "BotName":"WhatsApp ESS Agent",
+  "BotLocation": "europe",
+  "BotTokenEndPoint":"https://.5e.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr013_whatsAppEssAgent/directline/token?api-version=2022-03-01-preview",
+  "Meta:GraphVersion": "v25.0",
+  "Meta:AccessToken": "",
+  "Meta:AppSecret":"",
+  "Meta:VerifyToken": "",
+  "Meta:PhoneNumberId": "",
+  "Meta:WabaId": ""
+}
