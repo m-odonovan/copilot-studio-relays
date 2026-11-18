@@ -18,6 +18,21 @@ https://developers.facebook.com/documentation/business-messaging/whatsapp/get-st
 - Messages to WhatsApp user may arrive out of order -> if you send 2 messages to Meta, its possible that the second arrives before the first (out of sequence). This is becuase of message sizes and internet delivery. To work around this, you would need to either edit the code, and have some type of pause between sending messages to Meta, or in your Copilot Studio topic try and group messages together into a single message e.g. instead of 3 send message blocks directly underneath each other, group them into a single message.
 - Message templates and buttons -> this sample doesn't use WhatsApp message templates, it only supports plain text messages. This could be a future enhancement. Therefore adaptive cards don't render as designed in WhatsApp, and buttons appears as plaint text when using a question nodes with options.
 
+### Message processing
+
+Validated messages are placed onto an unbounded in-memory queue.
+The webhook responds with HTTP 200 after all messages have been enqueued.
+
+A background worker processes one message at a time, obtaining a Copilot
+Studio token, sending the message, and forwarding replies to WhatsApp.
+
+The queue is not durable. Shutdowns, crashes, restarts, and deployments can
+lose queued or in-progress messages. Each application instance has its own
+queue, and an excessive backlog can exhaust memory.
+
+There is currently no deduplication, automatic retry, or per-user scheduling.
+Expected downstream failures are logged without retrying the affected message.
+
 ### Future - change the code which calls Direct Line to use the "new" M365 Agent SDK
 
 At the time of coding this this, the new M365 Agent SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> [https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet](https://github.com/microsoft/Agents/tree/main/samples/dotnet/copilotstudio-client).

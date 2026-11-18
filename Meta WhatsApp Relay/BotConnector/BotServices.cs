@@ -34,7 +34,8 @@ namespace WhatsAppRelay.BotConnectorApp
         /// Get directline token for connecting bot
         /// </summary>
         /// <returns>directline token as string</returns>
-        public async Task<(string Token, DateTimeOffset ExpiresAtUtc)> GetTokenAsync()
+       public async Task<(string Token, DateTimeOffset ExpiresAtUtc)> GetTokenAsync(
+    CancellationToken cancellationToken = default)
         {
             
        if (string.IsNullOrWhiteSpace(TokenEndPoint))
@@ -50,10 +51,10 @@ namespace WhatsAppRelay.BotConnectorApp
     // Start the lifetime clock before the request to avoid overstating validity.
     var requestedAtUtc = DateTimeOffset.UtcNow;
 
-    using var response = await s_httpClient.SendAsync(request);
+    using var response = await s_httpClient.SendAsync(request,cancellationToken);
     response.EnsureSuccessStatusCode();
 
-    var json = await response.Content.ReadAsStringAsync();
+    var json = await response.Content.ReadAsStringAsync(cancellationToken);
     var result = SafeJsonConvert.DeserializeObject<DirectLineToken>(json);
 
     if (result is null ||
