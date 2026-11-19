@@ -14,6 +14,9 @@ public interface IMessageProcessor
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Processes incoming WhatsApp messages by sending them to the Copilot bot and handling the bot's responses.
+/// </summary>
 public sealed class CopilotMessageProcessor : IMessageProcessor
 {
     private const int WaitForBotResponseMaxMilliseconds = 30 * 1000;
@@ -48,6 +51,7 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
         ILogger<CopilotMessageProcessor> logger)
     {
         _logger = logger;
+        _logger.LogInformation("Initializing CopilotMessageProcessor.");
 
         _metaGraphVersion =
             configuration.GetValue<string>("Meta:GraphVersion")
@@ -234,6 +238,8 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
                 {
                     foreach (var activity in response.Activities)
                     {
+                        // Ignore activities that are not messages from the bot,
+                        //NB: it is important that the botname in the settings for this app service match the botname in Copilot Studio, otherwise you wont see messages
                         if (activity.Type == ActivityTypes.Message &&
                             activity.From is not null &&
                             string.Equals(
@@ -267,20 +273,26 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
         string recipient,
         CancellationToken cancellationToken)
     {
-        foreach (var response in responses)
+
+        // responseActivity is standard Microsoft.Bot.Connector.DirectLine.Activity
+                    // See https://github.com/Microsoft/botframework-sdk/blob/master/specs/botframework-activity/botframework-activity.md for reference
+                    // Showing examples of Text & SuggestedActions in response payload
+        foreach (var responseActivity in responses)
         {
-            if (!string.IsNullOrEmpty(response.Text))
+            //if the response type is text, send to meta as text
+            if (!string.IsNullOrEmpty(responseActivity.Text))
             {
+                // Split the message into chunks if it exceeds the WhatsApp reply length limit.
                 for (
                     int offset = 0;
-                    offset < response.Text.Length;
+                    offset < responseActivity.Text.Length;
                     offset += WhatsAppReplyChunkLength)
                 {
                     int length = Math.Min(
                         WhatsAppReplyChunkLength,
-                        response.Text.Length - offset);
+                        responseActivity.Text.Length - offset);
 
-                    string chunk = response.Text.Substring(
+                    string chunk = responseActivity.Text.Substring(
                         offset,
                         length);
 
@@ -290,12 +302,13 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
                         cancellationToken);
                 }
             }
-
-            if (response.SuggestedActions?.Actions is not null)
+            //if the response contains suggested actions, send them as text options to meta
+            // suggested actions are buttons, so we dont send buttons, we send text delimeted by pipe
+            if (responseActivity.SuggestedActions?.Actions is not null)
             {
                 var titles = new List<string>();
 
-                foreach (var action in response.SuggestedActions.Actions)
+                foreach (var action in responseActivity.SuggestedActions.Actions)
                 {
                     if (!string.IsNullOrWhiteSpace(action.Title))
                     {
@@ -316,6 +329,16 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
         }
     }
 
+
+/// <summary>
+/// Sends a text message to a WhatsApp recipient using the Meta Graph API.
+/// </summary>
+/// <param name="recipient">The WhatsApp recipient's phone number in international format</param>
+/// <param name="message">The text message to send</param>
+/// <param name="cancellationToken">The cancellation token to cancel the operation</param>
+/// <returns></returns>
+/// <exception cref="ArgumentException"></exception>
+/// <exception cref="HttpRequestException"></exception>
     private async Task SendWhatsAppTextMessageAsync(
         string recipient,
         string message,
@@ -381,6 +404,68 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
             throw new HttpRequestException(
                 $"Meta message request failed " +
                 $"({(int)response.StatusCode}): {error}",
+                null,
+                response.StatusCode);
+        }
+    }
+
+
+    
+    /// <summary>
+    /// Not currently used, will flesh this out when we need to support template message sending via Meta WhatsApp API
+    /// </summary>
+    /// <param name="to"></param>
+    /// <param name="templateName"></param>
+    /// <param name="languageCode"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="HttpRequestException"></exception>
+    private async Task SendWhatsAppTemplateMessageViaMeta(
+    string to,
+    string templateName ,
+    string languageCode , CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(to))
+            throw new ArgumentException("A recipient is required.", nameof(to));
+
+        if (string.IsNullOrWhiteSpace(templateName))
+            throw new ArgumentException(
+                "A template name is required.", nameof(templateName));
+
+        if (string.IsNullOrWhiteSpace(languageCode))
+            throw new ArgumentException(
+                "A language code is required.", nameof(languageCode));
+
+        var url =
+            $"https://graph.facebook.com/{_metaGraphVersion}/{_metaPhoneNumberId}/messages";
+
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to,
+            type = "template",
+            template = new
+            {
+                name = templateName,
+                language = new { code = languageCode }
+            }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _metaAccessToken);
+        request.Content = JsonContent.Create(payload);
+
+        using var response = await s_metaHttpClient.SendAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(
+                cancellationToken);
+
+            throw new HttpRequestException(
+                $"Meta message request failed ({(int)response.StatusCode}): {error}",
                 null,
                 response.StatusCode);
         }

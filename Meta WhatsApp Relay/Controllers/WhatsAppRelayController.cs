@@ -53,6 +53,13 @@ public class WhatsAppRelayController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Called by Meta to verify the webhook during setup. When you click verify in the Meta developer portal, Meta will send a GET request to this endpoint with the mode, challenge, and verify token.
+    /// </summary>
+    /// <param name="mode">Always is subscribe</param>
+    /// <param name="challenge">The challenge string that should be echoed back if verification is successful</param>
+    /// <param name="verifyToken">The token sent by Meta to verify the webhook. You add this into the developer portal, and this method checks if it matches the one you configured</param>
+    /// <returns></returns>
     [HttpGet("messagerelay")]
     public ActionResult VerifyWebhook(
         [FromQuery(Name = "hub.mode")] string? mode,
@@ -66,6 +73,7 @@ public class WhatsAppRelayController : ControllerBase
                 StringComparison.Ordinal) ||
             string.IsNullOrEmpty(challenge))
         {
+            _logger.LogInformation("Invalid Meta webhook verification request.");
             return new ContentResult
             {
                 Content = "Invalid request",
@@ -73,7 +81,7 @@ public class WhatsAppRelayController : ControllerBase
                 StatusCode = StatusCodes.Status403Forbidden
             };
         }
-
+        _logger.LogInformation("Valid Meta webhook verification request.");
         return new ContentResult
         {
             Content = challenge,
@@ -82,6 +90,13 @@ public class WhatsAppRelayController : ControllerBase
         };
     }
 
+
+    /// <summary>
+    /// Handles incoming Meta webhook events for WhatsApp messages and delivery statuses. This is what is called by meta and they post JSON to this endpoint
+    /// </summary>
+    /// <param name="signature"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     [HttpPost("messagerelay")]
     [Consumes("application/json")]
     public async Task<ActionResult> MessageRelay(
@@ -147,23 +162,62 @@ public class WhatsAppRelayController : ControllerBase
         DeliveryStatus[] statuses =
             events.OfType<DeliveryStatus>().ToArray();
 
-        foreach (var status in statuses)
-        {
-            _logger.LogInformation(
-                "Meta delivery status: {DeliveryStatus}",
-                status);
-        }
+
+
+        //for each incoming message from meta, add the message to a queue
+
+        int acceptedCount = 0;
+        int duplicateCount = 0;
 
         foreach (var message in messages)
         {
-            await _messageQueue.EnqueueAsync(
+            bool accepted = await _messageQueue.EnqueueAsync(
                 message,
                 cancellationToken);
+
+            if (accepted)
+            {
+                acceptedCount++;
+            }
+            else
+            {
+                duplicateCount++;
+
+                _logger.LogInformation(
+                    "Skipped duplicate incoming message {MessageId}.",
+                    message.Id);
+            }
         }
 
-        _logger.LogInformation(
-            "Accepted {MessageCount} messages into the queue.",
-            messages.Length);
+        //if message count is greate than 1 then log a special message
+        if (acceptedCount > 0)
+        {
+            _logger.LogInformation(
+           "Pushed {acceptedCount} messages into the queue.",
+           acceptedCount);
+        }
+
+        //if duplicate count is greater than 0 then log a special message
+        if (duplicateCount > 0)
+        {
+            _logger.LogInformation(
+                "Skipped {DuplicateCount} duplicate messages.",
+                duplicateCount);
+        }
+
+
+        // we not doing anything with status messages from meta for now, we just logging them
+        foreach (var status in statuses)
+        {
+            _logger.LogInformation(
+       "Meta delivery | Sender: {Sender} | Kind: {Kind} | Status: {Status} | MessageId: {MessageId}",
+       status.Sender,
+       status.Kind,
+       status.Status,
+       status.MessageId);
+        }
+
+
 
         return new ContentResult
         {
@@ -173,6 +227,7 @@ public class WhatsAppRelayController : ControllerBase
         };
     }
 
+    //check if message from meta conforms to their rules / guidance, i.e. is valid
     private bool IsMetaRequestValid(
         byte[] payload,
         string? signature,

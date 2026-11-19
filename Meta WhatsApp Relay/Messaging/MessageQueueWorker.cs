@@ -3,6 +3,10 @@ using WhatsAppRelay.Controllers;
 
 namespace WhatsAppRelay.Messaging;
 
+/// <summary>
+/// This runs as a background task that continuously reads messages from the queue and processes them.
+/// It handles message processing failures and logs them appropriately.
+/// </summary>
 public sealed class MessageQueueWorker : BackgroundService
 {
     private readonly IMessageQueue _messageQueue;
@@ -25,9 +29,11 @@ public sealed class MessageQueueWorker : BackgroundService
         try
         {
             await foreach (
-                var message in _messageQueue.ReadAllAsync(stoppingToken))
+    var message in _messageQueue.ReadAllAsync(stoppingToken))
             {
                 await ProcessMessageAsync(message, stoppingToken);
+
+                _messageQueue.MarkHandled(message);
             }
         }
         catch (OperationCanceledException)

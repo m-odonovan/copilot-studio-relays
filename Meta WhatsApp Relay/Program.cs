@@ -6,6 +6,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddMemoryCache();
+
 builder.Services.AddSingleton<IMessageQueue, InMemoryMessageQueue>();
 builder.Services.AddSingleton<IMessageProcessor, CopilotMessageProcessor>();
 builder.Services.AddHostedService<MessageQueueWorker>();

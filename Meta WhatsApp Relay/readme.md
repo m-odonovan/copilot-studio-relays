@@ -68,6 +68,10 @@ In the Twilio dashboard, you need to tell Twlio to forward requests to your web 
 Local Development Debugging
 You can use NGROK or Azure Dev Tunnel to point the Messaging EndPoint in Twilio to your localhost dev server, and use debugging, breakpoints etc. In Twilio you would configure the endpoint to be the hostname and port Dev Tunnel gives you.
 
+Acces token is temporary, and expires, this code wont work...?
+
+/WhatsAppRelay/messagerelay
+
 ### Environment variables in Azure App Service
 
 There are several settings which the application uses, which are set in the appsettings.json / appsettings.development.json / appsettings.production.json. When hosted in Azure App service, you can still use these files, but better practise to set them in the environment settings part of the Azure App service.
