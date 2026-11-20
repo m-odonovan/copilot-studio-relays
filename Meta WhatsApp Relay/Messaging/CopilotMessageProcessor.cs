@@ -37,13 +37,21 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
             new ConcurrentDictionary<string, SenderTokenState>(
                 StringComparer.Ordinal);
 
+
+    /// <summary>
+    /// this stores state about the sender, their conversation and watermark for their conversation, including saved auth token and its expiration time
+    /// </summary>
     private sealed class SenderTokenState
     {
-        public SemaphoreSlim Gate { get; } = new SemaphoreSlim(1, 1);
+        public SemaphoreSlim Gate { get; } = new(1, 1);
 
         public string? Token { get; set; }
 
         public DateTimeOffset ExpiresAtUtc { get; set; }
+
+        public string? ConversationId { get; set; }
+
+        public string? Watermark { get; set; }
     }
 
     public CopilotMessageProcessor(
@@ -117,8 +125,8 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
     }
 
     public async Task ProcessAsync(
-        IncomingMessage message,
-        CancellationToken cancellationToken)
+     IncomingMessage message,
+     CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(message.Text))
         {
@@ -130,78 +138,83 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
             return;
         }
 
-        var token = await GetSenderTokenAsync(
-            message.Key,
-            cancellationToken);
-
-        using var directLineClient = new DirectLineClient(token);
-
-        directLineClient.BaseUri =
-            new Uri(_botService.GetBotBaseUri());
-
-        var conversation =
-            await directLineClient.Conversations.StartConversationAsync(
-                cancellationToken: cancellationToken);
-
-        await directLineClient.Conversations.PostActivityAsync(
-            conversation.ConversationId,
-            new Activity
-            {
-                Type = ActivityTypes.Message,
-                From = new ChannelAccount
-                {
-                    Id = message.Sender,
-                    Name = "unknown"
-                },
-                Text = message.Text,
-                TextFormat = "plain",
-                Locale = "en-Us"
-            },
-            cancellationToken: cancellationToken);
-
-        var responses = await GetBotResponseActivitiesAsync(
-            directLineClient,
-            conversation.ConversationId,
-            cancellationToken);
-
-        await SendBotRepliesAsync(
-            responses,
-            message.Sender,
-            cancellationToken);
-    }
-
-    private async Task<string> GetSenderTokenAsync(
-        string senderKey,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(senderKey))
+        if (string.IsNullOrWhiteSpace(message.Key))
         {
             throw new ArgumentException(
                 "A sender key is required.",
-                nameof(senderKey));
+                nameof(message));
         }
 
         var state = _senderTokens.GetOrAdd(
-            senderKey,
+            message.Key,
             _ => new SenderTokenState());
 
         await state.Gate.WaitAsync(cancellationToken);
 
         try
         {
-            if (state.Token is not null &&
-                DateTimeOffset.UtcNow < state.ExpiresAtUtc)
-            {
-                return state.Token;
-            }
-
-            var result = await _botService.GetTokenAsync(
+            var token = await GetSenderTokenAsync(
+                state,
                 cancellationToken);
 
-            state.Token = result.Token;
-            state.ExpiresAtUtc = result.ExpiresAtUtc;
+            using var directLineClient = new DirectLineClient(token);
 
-            return result.Token;
+            directLineClient.BaseUri =
+                new Uri(_botService.GetBotBaseUri());
+
+            var conversation =
+                await directLineClient.Conversations.StartConversationAsync(
+                    cancellationToken: cancellationToken);
+
+            var conversationId = conversation.ConversationId;
+
+            if (string.IsNullOrWhiteSpace(conversationId))
+            {
+                throw new InvalidOperationException(
+                    "Direct Line did not return a conversation ID.");
+            }
+
+            if (!string.Equals(
+                    state.ConversationId,
+                    conversationId,
+                    StringComparison.Ordinal))
+            {
+                state.ConversationId = conversationId;
+                state.Watermark = null;
+
+                _logger.LogInformation(
+                    "Using conversation {ConversationId} for sender key " +
+                    "{SenderKey}; watermark reset.",
+                    conversationId,
+                    message.Key);
+            }
+
+            await directLineClient.Conversations.PostActivityAsync(
+                conversationId,
+                new Activity
+                {
+                    Type = ActivityTypes.Message,
+                    From = new ChannelAccount
+                    {
+                        Id = message.Sender,
+                        Name = "unknown"
+                    },
+                    Text = message.Text,
+                    TextFormat = "plain",
+                    Locale = "en-Us"
+                },
+                cancellationToken: cancellationToken);
+
+            var responses = await GetBotResponseActivitiesAsync(
+                directLineClient,
+                conversationId,
+                state,
+                cancellationToken);
+
+            await SendBotRepliesAsync(
+                responses,
+                message.Sender,
+                cancellationToken);
         }
         finally
         {
@@ -209,12 +222,32 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
         }
     }
 
-    private async Task<List<Activity>> GetBotResponseActivitiesAsync(
-        DirectLineClient directLineClient,
-        string conversationId,
+    private async Task<string> GetSenderTokenAsync(
+       SenderTokenState state,
         CancellationToken cancellationToken)
     {
-        string? watermark = null;
+        if (state.Token is not null &&
+        DateTimeOffset.UtcNow < state.ExpiresAtUtc)
+        {
+            return state.Token;
+        }
+
+        var result = await _botService.GetTokenAsync(
+            cancellationToken);
+
+        state.Token = result.Token;
+        state.ExpiresAtUtc = result.ExpiresAtUtc;
+
+        return result.Token;
+    }
+
+    private async Task<List<Activity>> GetBotResponseActivitiesAsync(
+    DirectLineClient directLineClient,
+    string conversationId,
+    SenderTokenState state,
+    CancellationToken cancellationToken)
+    {
+
 
         var maximumAttempts =
             WaitForBotResponseMaxMilliseconds /
@@ -222,17 +255,31 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
 
         for (int attempt = 0; attempt < maximumAttempts; attempt++)
         {
+
+            _logger.LogInformation(
+                "Polling for bot response, attempt {Attempt} of {MaximumAttempts}.",
+                attempt + 1,
+                maximumAttempts);
             var response =
-                await directLineClient.Conversations.GetActivitiesAsync(
-                    conversationId,
-                    watermark,
-                    cancellationToken: cancellationToken);
+      await directLineClient.Conversations.GetActivitiesAsync(
+          conversationId,
+          state.Watermark,
+          cancellationToken: cancellationToken);
+
+            //TOO: shouldnt this be outside the loop? otherwise we are creating a new list on each attempt
 
             var botMessages = new List<Activity>();
 
             if (response is not null)
             {
-                watermark = response.Watermark;
+                _logger.LogInformation(
+                    "Received response from bot with activity count of {ActivityCount}.",
+                    response.Activities?.Count ?? 0);
+
+                if (response.Watermark is not null)
+                {
+                    state.Watermark = response.Watermark;
+                }
 
                 if (response.Activities is not null)
                 {
@@ -258,6 +305,9 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
                 return botMessages;
             }
 
+            _logger.LogInformation(
+                "No bot response received, waiting for {Interval} milliseconds before next attempt.",
+                PollForBotResponseIntervalMilliseconds);
             await Task.Delay(
                 PollForBotResponseIntervalMilliseconds,
                 cancellationToken);
@@ -275,8 +325,8 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
     {
 
         // responseActivity is standard Microsoft.Bot.Connector.DirectLine.Activity
-                    // See https://github.com/Microsoft/botframework-sdk/blob/master/specs/botframework-activity/botframework-activity.md for reference
-                    // Showing examples of Text & SuggestedActions in response payload
+        // See https://github.com/Microsoft/botframework-sdk/blob/master/specs/botframework-activity/botframework-activity.md for reference
+        // Showing examples of Text & SuggestedActions in response payload
         foreach (var responseActivity in responses)
         {
             //if the response type is text, send to meta as text
@@ -330,15 +380,15 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
     }
 
 
-/// <summary>
-/// Sends a text message to a WhatsApp recipient using the Meta Graph API.
-/// </summary>
-/// <param name="recipient">The WhatsApp recipient's phone number in international format</param>
-/// <param name="message">The text message to send</param>
-/// <param name="cancellationToken">The cancellation token to cancel the operation</param>
-/// <returns></returns>
-/// <exception cref="ArgumentException"></exception>
-/// <exception cref="HttpRequestException"></exception>
+    /// <summary>
+    /// Sends a text message to a WhatsApp recipient using the Meta Graph API.
+    /// </summary>
+    /// <param name="recipient">The WhatsApp recipient's phone number in international format</param>
+    /// <param name="message">The text message to send</param>
+    /// <param name="cancellationToken">The cancellation token to cancel the operation</param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="HttpRequestException"></exception>
     private async Task SendWhatsAppTextMessageAsync(
         string recipient,
         string message,
@@ -410,7 +460,7 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
     }
 
 
-    
+
     /// <summary>
     /// Not currently used, will flesh this out when we need to support template message sending via Meta WhatsApp API
     /// </summary>
@@ -422,8 +472,8 @@ public sealed class CopilotMessageProcessor : IMessageProcessor
     /// <exception cref="HttpRequestException"></exception>
     private async Task SendWhatsAppTemplateMessageViaMeta(
     string to,
-    string templateName ,
-    string languageCode , CancellationToken cancellationToken)
+    string templateName,
+    string languageCode, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(to))
             throw new ArgumentException("A recipient is required.", nameof(to));

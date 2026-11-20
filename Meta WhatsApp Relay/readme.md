@@ -1,96 +1,94 @@
 # Meta Direct API WhatsApp Relay Service
-This is a relay service, which relays incoming messages between Meta (WhatsApp user), and a Copilot Studio standard harness agent. It is designed to be hosted as an Azure Web App Service.
+This service relays incoming messages between Meta (WhatsApp users) and a Copilot Studio standard harness agent. It is designed to be hosted in Azure App Service.
 
-This is not ready yet, still working on it. It needs work around queuing and debugging.
+This is a sample, provided "as-is". It hasn't been fully tested and needs some adjustments to make it ready for large-scale enterprise use. Some suggested adjustments are documented below.
 
-WhatsApp Relay sample
-https://github.com/microsoft/CopilotStudioSamples/tree/adilei-whatsapp-upstream-pr/extensibility/agents-sdk/whatsapp-relay
+This is not ready yet; it is still a work in progress. It needs work around queuing and debugging.
 
-https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started#step-3-send-and-receive-messages
+# Architecture
 
-[text](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview)
+- This service listens for incoming webhook messages from Meta.
+- For each JSON payload received, it takes the messages in the JSON and adds them to a queue for processing.
+- A separate worker reads messages from this queue and sends each message to the Copilot Studio agent using the Direct Line API.
+- The worker then polls the Copilot Studio agent using the Direct Line API to check for responses. If there is a response, it sends it to the user via the Meta API.
+- The service maintains sender state (sender, conversation ID, token, etc.) so that subsequent requests from the sender use the same conversation.
+- The queue supports message deduplication. For example, if Meta sends the same message several times (which it can for several reasons), we don't process the message again.
+- It currently supports text messages only, both received from and sent to users, but it has placeholder logic for other message types and message templates. Buttons appear as text options for now.
+- If a message's text is too large to send to Meta in one go, the logic splits it into multiple messages and sends each one.
 
-# Some notes / learnings from the solution:
+# Some Notes and Learnings from the Solution
 
-### Meta API nuances
+### Interesting Nuances
 
-- Size of messages -> there is a max message size of 1600 characters, so if the response of a message is larger than this, you need to split it into two messages. This sample does do this, but it could be smarter.
-- Messages to WhatsApp user may arrive out of order -> if you send 2 messages to Meta, its possible that the second arrives before the first (out of sequence). This is becuase of message sizes and internet delivery. To work around this, you would need to either edit the code, and have some type of pause between sending messages to Meta, or in your Copilot Studio topic try and group messages together into a single message e.g. instead of 3 send message blocks directly underneath each other, group them into a single message.
-- Message templates and buttons -> this sample doesn't use WhatsApp message templates, it only supports plain text messages. This could be a future enhancement. Therefore adaptive cards don't render as designed in WhatsApp, and buttons appears as plaint text when using a question nodes with options.
+- Messages to WhatsApp users may arrive out of order. If you send two messages to Meta, it's possible that the second arrives before the first. This is because of message sizes and internet delivery. To work around this, you would need to either edit the code to introduce a pause between sending messages to Meta or group messages into a single message in your Copilot Studio topic. For example, instead of three Send a message nodes directly after each other, group them into a single message.
 
-### Message processing
+### Potential Enhancements
 
-Validated messages are placed onto an unbounded in-memory queue.
-The webhook responds with HTTP 200 after all messages have been enqueued.
+- The queue is not durable. Shutdowns, crashes, restarts, and deployments can lose queued or in-progress messages. It's an in-memory queue only. In the future, you could consider moving this to a durable queue, such as Azure Service Bus or a database table. This would also support scaling this application across several instances. Today, it only supports a single instance, as the queue and previously seen message IDs are held only in the running instance's memory.
+- The code uses the Direct Line API. Ideally, this should be changed to use the Microsoft 365 Agents SDK, as this is the future for calling Copilot Studio agents. However, as of today, the Microsoft 365 Agents SDK does not support S2S authentication. When you read this, it might, and you may want to change the code, for example, to use the Copilot Studio client object to connect to Copilot Studio.
+- Even when using the Direct Line API, you could consider using a WebSocket connection, which the code doesn't do today. A WebSocket remains open, so you don't need to poll for messages from Copilot Studio. However, there are considerations, such as how many connections the architecture would support. If there are 2,000 users, you could end up with 2,000 connections. Can Copilot Studio support the resulting message delivery rate and number of connections? You would need to consider connection timeouts so that connections don't stay open too long.
+- If the code remains "as-is", the polling architecture has some issues and concerns. It polls for messages for a configured duration. If it doesn't receive a message from Copilot Studio within this period, the user will not see the message until they send another message later. If Copilot Studio responds with two messages right after each other, for example, from two Send a message nodes in a topic, the polling logic may see the first, send it, and stop processing. You could change the logic to continue polling after seeing the first message, but this could keep the worker busy for longer and delay other messages. Therefore, at this stage, avoid sending messages from Copilot Studio in this way. Send one message to the user in response to one message from the user.
+- Only one message is handled by the worker at a time. It reads a message from the queue, sends it to Copilot Studio, and polls for a response. Only once it has finished can it process the next message in the queue. You could consider an architecture with multiple workers so that several messages can be processed in parallel. You need to consider the load on the Copilot Studio Direct Line API and the rate of responses sent to Meta to understand whether this will be an issue.
 
-A background worker processes one message at a time, obtaining a Copilot
-Studio token, sending the message, and forwarding replies to WhatsApp.
+# Setup and Configuration
 
-The queue is not durable. Shutdowns, crashes, restarts, and deployments can
-lose queued or in-progress messages. Each application instance has its own
-queue, and an excessive backlog can exhaust memory.
+## Meta
 
-There is currently no deduplication, automatic retry, or per-user scheduling.
-Expected downstream failures are logged without retrying the affected message.
+You will need to follow Meta's guidance to create a WhatsApp app in the [Meta developer portal](https://developers.facebook.com/). There, you will get an access token and configure the webhook URL to point to the hosted App Service (this solution). Set the callback URL to something like `https://<hosted-endpoint>/WhatsAppRelay/messagerelay`, replacing `<hosted-endpoint>` with your hostname. This could be a local dev tunnel if you're building or testing the service on your PC, or a public endpoint in Azure App Service.
 
-### Future - change the code which calls Direct Line to use the "new" M365 Agent SDK
-
-At the time of coding this this, the new M365 Agent SDK didn't support S2S authentication, but in the future it will. This SDK seems more robust and should be used instead when calling Copilot Studio (Direct Line). Something similar to this example -> [https://github.com/microsoft/Agents/blob/main/samples/basic/copilotstudio-client/dotnet](https://github.com/microsoft/Agents/tree/main/samples/dotnet/copilotstudio-client).
-Particularly interesting is how it appears you don't need to poll to check for messages from Direct Line, but rather it uses a websocket which receives messages as they arrive. You will notice in my sample it polls for messages from Direct Line, and uses a variable for how how max times it should check for messages, and the interval between the polling in, in milliseconds.
-
-### launchSettings.json
-
-This is for local development, it defines how the local web server will be launched, the security settings for it, the ports used and the mode of the application e.g. Development. This mode is used by other settings configuration to determien which app settings to use. i.e. appsettings.json is always used, but it will also use appsettings.Development.json, if the development mode in launchSettings is set to Development. When hosted in your Azure App Service, ensure you have an environment variable called "ASPNETCORE_ENVIRONMENT" set to "Production", so code in the solution runs as production and not development.
+You will also add your own verification token (a complex string you create). Add this same string to the WhatsApp Relay Service configuration.
 
 ### Local Development
 
-To run locally you can either start from VS Code / Visual Studio, and use break points to debug, or you can build via command line and run e..g "dotnet build" will just compile the solution, or "dotnet watch run" will compile and run, but also dynamicaly recompile if you change code.
+To run locally, you can start from VS Code or Visual Studio and use breakpoints to debug, or build and run from the command line. For example, `dotnet build` compiles the solution, while `dotnet watch run` compiles and runs it, and dynamically recompiles when you change the code.
 
-When launched in development mode, it should launch the swagger test page, so you can test using swagger web form, like shown below.
+When launched in development mode, it should open the Swagger test page so that you can test using the Swagger web form.
 
-![Swagger](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/swagger.png?raw=true "Swagger")
+If you're running locally and want Meta to call the service on your PC, you will need to use a dev tunnel or something equivalent. For example:
 
-Note format of from paramter value, using whatsapp keyword in before the telephone number
+```powershell
+devtunnel host -p 7016 --protocol https --allow-anonymous
+```
+
+This returns a hostname you can use in the webhook configuration in the Meta developer portal.
+
+#### [launchSettings.json](Properties/launchSettings.json)
+
+This file is for local development. It defines how the local web server will be launched, its security settings, the ports used, and the application's environment, such as `Development`. This environment determines which app settings are used. [appsettings.json](appsettings.json) is always used, but [appsettings.Development.json](appsettings.Development.json) is also used if the environment is set to `Development`. When hosted in Azure App Service, ensure the `ASPNETCORE_ENVIRONMENT` environment variable is set to `Production` so that the solution runs in production mode rather than development mode.
 
 ### Publish to Azure App Service
 
- - First you should compile the service for release and not debug i.e. command line is "dotnet build -c release". This will compile what is need in app service to bin/ver/release/
- - Recommendation: If you use publish instead of build, it will create a publish folder and add compiled solution into there, along with required .Net framework files for self contained exection "dotnet publish -c release -0 ./publish". In my case the only difference was it added the startup.html page also. But this is good. This publish folder is what can be deployed to Azur App Service
+- First, compile the service in Release rather than Debug mode using `dotnet build -c Release`. The compiled output is placed under `bin\Release\`.
+- Recommendation: use `dotnet publish -c Release -o .\publish` to create a publish folder containing the compiled application and its dependencies. In my case, publishing also added the `startup.html` file. This publish folder can be deployed to Azure App Service.
 
-I used VS Code, added the Azure App Service Extension, and then chose to publish to App Service, and chose the publish folder created in step above. This ensures only the publish files are uploaded to the web app
+I used VS Code, added the Azure App Service extension, chose to publish to App Service, and selected the publish folder created in the previous step. This ensures that only the published files are uploaded to the web app.
 
-### Meta Config
+### Environment Variables: Local vs. Azure App Service
 
-In the Twilio dashboard, you need to tell Twlio to forward requests to your web app i.e. something like the below. This could also be to your localhost deployment if you are using a devtunnel. If using devtunne;, you would change the hostname to the devtunnel host name.
+Application settings can be set in [appsettings.json](appsettings.json), [appsettings.Development.json](appsettings.Development.json), or an environment-specific file such as `appsettings.Production.json`. When hosted in Azure App Service, you can still use these files, but it is better practice to configure these values in the environment settings in Azure App Service.
 
-![Twilio Config](https://github.com/m-odonovan/copilot-studio-relays/blob/main/Twilio%20WhatsApp%20Relay/images/TwilioConfig.png?raw=true "Twilio Config")
+Note: a sample configuration is provided in [appsettings.json.example](appsettings.json.example). You will need to edit its contents and rename it to `appsettings.json`.
 
-Local Development Debugging
-You can use NGROK or Azure Dev Tunnel to point the Messaging EndPoint in Twilio to your localhost dev server, and use debugging, breakpoints etc. In Twilio you would configure the endpoint to be the hostname and port Dev Tunnel gives you.
+Here is a list of settings as they would appear in the app settings file. All are required:
 
-Acces token is temporary, and expires, this code wont work...?
+- `BotId` - Copilot Studio bot ID (get this from the bot's URL in the designer).
+- `BotTenantId` - get this from the Copilot Studio settings for the agent or bot.
+- `BotName` - friendly name of the Copilot Studio agent or bot.
+- `BotLocation` - leave empty for the US; otherwise, set to `europe` or `india`. This is used for the Direct Line URL.
+- `BotTokenEndPoint` - Direct Line token endpoint; see this [example endpoint](https://example.5b.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_example/directline/token?api-version=2022-03-01-preview).
+- `Meta:GraphVersion` - version of the Meta API to use, for example, `v25.0`.
+- `Meta:AccessToken` - get this from the app setup in Meta.
+- `Meta:AppSecret` - get this from the app setup in Meta.
+- `Meta:VerifyToken` - complex string you added to the webhook settings.
+- `Meta:PhoneNumberId` - phone number ID from Meta, not the actual phone number.
+- `Meta:WabaId` - WhatsApp ID from Meta.
 
-/WhatsAppRelay/messagerelay
+### Enable Logging in the Web App
 
-### Environment variables in Azure App Service
+The logging level is configured in [appsettings.json](appsettings.json). You can change the level of logging output using standard ASP.NET Core logging.
 
-There are several settings which the application uses, which are set in the appsettings.json / appsettings.development.json / appsettings.production.json. When hosted in Azure App service, you can still use these files, but better practise to set them in the environment settings part of the Azure App service.
+### References
 
-Here is list of settings, as they would appear in the appsettings file:
-
-- "BotId" - Copilot Studio bot id (get from URL of bot in designer)
-- "BotTenantId" - get from Copilot Studio settings for agent/bot
-- "BotName" - friendly name of Copilot Studio agent / bot
-- "BotLocation" - leave empty if US, otherwise set to "europe", or "india". This is for the DirectLine URL
-- "BotTokenEndPoint" - directline endpoint e.g "https://example.5b.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr245_example/directline/token?api-version=2022-03-01-preview"
-
-### DevTunnel
-Some notes ...
-devtunnel host -p 7016 --protocol https --allow-anonymous
-
-
-
-### Enable logging in web app
-
-If you edit web.config in app service, you can set stdoutLogEnabled="true", this will send all output in the app service e.g. console.writeline and log output to these log files
-
+- [WhatsApp relay sample for Copilot Studio](https://github.com/microsoft/CopilotStudioSamples/tree/adilei-whatsapp-upstream-pr/extensibility/agents-sdk/whatsapp-relay), where each user authenticates through WhatsApp as themselves.
+- [Meta developer documentation for sending and receiving messages](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started#step-3-send-and-receive-messages).
+- [Meta webhook documentation](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview).
